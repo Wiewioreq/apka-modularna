@@ -1,0 +1,115 @@
+ Directory of C:\Users\pawel\apka modularna
+
+15/06/2025  22:41    <DIR>          .
+14/06/2025  10:24    <DIR>          ..
+14/06/2025  21:53    <DIR>          .expo
+15/06/2025  22:59             1,947 App.js
+15/06/2025  22:10             2,007 app.json
+15/06/2025  15:49               344 eas.json
+05/06/2025  22:49             1,162 google-services.json
+15/06/2025  22:05               547 index.js
+15/06/2025  16:02    <DIR>          node_modules
+15/06/2025  16:02           389,763 package-lock.json
+15/06/2025  22:06             1,222 package.json
+15/06/2025  22:44    <DIR>          src
+               7 File(s)        396,992 bytes
+               5 Dir(s)  348,115,759,104 bytes free
+
+C:\Users\pawel\apka modularna>
+ Directory of C:\Users\pawel\apka modularna\src
+
+15/06/2025  22:44    <DIR>          .
+15/06/2025  22:41    <DIR>          ..
+14/06/2025  21:23    <DIR>          assets
+15/06/2025  16:02            35,214 backupApp.js
+14/06/2025  20:21    <DIR>          components
+14/06/2025  21:14    <DIR>          constants
+14/06/2025  10:33    <DIR>          firebase
+15/06/2025  22:36             6,430 MainNavigator.js
+15/06/2025  16:27    <DIR>          screens
+14/06/2025  21:09    <DIR>          utils
+               2 File(s)         41,644 bytes
+               8 Dir(s)  348,114,374,656 bytes free
+ Directory of C:\Users\pawel\apka modularna\src\assets
+
+14/06/2025  21:23    <DIR>          .
+15/06/2025  22:44    <DIR>          ..
+09/06/2025  23:33           940,155 adaptive-icon.png
+09/06/2025  23:08             9,952 favicon.png
+14/06/2025  21:23    <DIR>          fonts
+12/06/2025  23:10         1,154,936 icon.png
+14/06/2025  21:23    <DIR>          images
+15/06/2025  15:38             1,347 index.js
+09/06/2025  23:08            20,152 notification-icon.png
+09/06/2025  23:03            26,979 splash-icon.png
+09/06/2025  23:07         2,256,917 splash.png
+               7 File(s)      4,410,438 bytes
+               4 Dir(s)  348,121,817,088 bytes free
+
+ Directory of C:\Users\pawel\apka modularna\src\components
+
+14/06/2025  20:21    <DIR>          .
+15/06/2025  22:44    <DIR>          ..
+14/06/2025  20:16             4,868 AppHeader.js
+15/06/2025  15:37             3,161 CustomIcons.js
+14/06/2025  20:15             1,165 DogAvatar.js
+14/06/2025  11:27             2,019 ErrorBoundary.js
+14/06/2025  20:17               825 LoadingScreen.js
+14/06/2025  20:21            11,728 Modals.js
+14/06/2025  20:16             3,368 NavigationTabs.js
+14/06/2025  20:17               884 OfflineBanner.js
+14/06/2025  20:10             4,861 PhotoProgress.js
+14/06/2025  11:27             2,312 ProgressRing.js
+14/06/2025  20:15             3,905 QuickActions.js
+14/06/2025  19:40             4,755 SmartTips.js
+14/06/2025  11:28             2,000 StreakCounter.js
+14/06/2025  20:21             1,057 SyncIndicator.js
+14/06/2025  20:09             7,332 TrainingCalendar.js
+              15 File(s)         54,240 bytes
+               2 Dir(s)  348,121,706,496 bytes free
+ Directory of C:\Users\pawel\apka modularna\src\constants
+
+14/06/2025  21:14    <DIR>          .
+15/06/2025  22:44    <DIR>          ..
+14/06/2025  21:14            10,363 achievements.js
+15/06/2025  17:49            16,240 app.js
+15/06/2025  17:49               984 colors.js
+14/06/2025  21:14             3,049 dailyRoutine.js
+14/06/2025  21:13             3,757 trainingStages.js
+14/06/2025  21:14             7,682 weeklyPlans.js
+               6 File(s)         42,075 bytes
+               2 Dir(s)  348,120,096,768 bytes free
+ Directory of C:\Users\pawel\apka modularna\src\firebase
+
+14/06/2025  10:33    <DIR>          .
+15/06/2025  22:44    <DIR>          ..
+15/06/2025  17:50             6,910 config.js
+               1 File(s)          6,910 bytes
+               2 Dir(s)  348,118,183,936 bytes free
+ Directory of C:\Users\pawel\apka modularna\src\screens
+
+15/06/2025  16:27    <DIR>          .
+15/06/2025  22:44    <DIR>          ..
+14/06/2025  19:38             5,386 AchievementsScreen.js
+14/06/2025  12:46             8,266 DailyScreen.js
+14/06/2025  19:38             5,525 FamilyScreen.js
+15/06/2025  20:15            85,340 MainScreen.js
+14/06/2025  19:38             8,255 NotesScreen.js
+15/06/2025  16:29            17,010 ProgressScreen.js
+15/06/2025  16:27            11,853 SettingsScreen.js
+14/06/2025  17:23             7,318 WeeklyScreen.js
+               8 File(s)        148,953 bytes
+               2 Dir(s)  348,116,590,592 bytes free
+ Directory of C:\Users\pawel\apka modularna\src\utils
+
+14/06/2025  21:09    <DIR>          .
+15/06/2025  22:44    <DIR>          ..
+14/06/2025  21:08             6,360 achievements.js
+14/06/2025  21:07             4,178 date.js
+14/06/2025  21:07             2,203 deepEqual.js
+14/06/2025  21:09             5,230 image.js
+14/06/2025  21:09             4,644 notifications.js
+14/06/2025  21:08             3,800 storage.js
+14/06/2025  21:08             6,484 training.js
+               7 File(s)         32,899 bytes
+               2 Dir(s)  348,115,582,976 bytes free

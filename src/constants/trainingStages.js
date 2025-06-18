@@ -1,0 +1,42 @@
+export const trainingStages = {
+  1: {
+    name: "🐶 Puppy Foundation (Weeks 1-4)",
+    range: "8-12 weeks",
+    color: "#E6F3E6",
+    borderColor: "#228B22",
+    textColor: "#0F4A0F",
+    emoji: "🐶",
+  },
+  2: {
+    name: "🎓 Basic Training (Weeks 5-16)", 
+    range: "12-16 weeks",
+    color: "#E6F0FF",
+    borderColor: "#8B4513",
+    textColor: "#1A365D",
+    emoji: "🎓",
+  },
+  3: {
+    name: "🏆 Advanced Skills (Weeks 17-26)",
+    range: "4-6 months", 
+    color: "#FFF0E6",
+    borderColor: "#DAA520",
+    textColor: "#744210",
+    emoji: "🏆",
+  },
+  4: {
+    name: "🐕‍🦺 Young Adult (Weeks 27-39)",
+    range: "6-9 months",
+    color: "#FFE6E6",
+    borderColor: "#FF6347",
+    textColor: "#7A1A1A",
+    emoji: "🐕‍🦺",
+  },
+  5: {
+    name: "🎯 Mature Dog (Weeks 40-52)",
+    range: "9-12 months",
+    color: "#F0E6FF",
+    borderColor: "#8B4FB3",
+    textColor: "#4A1A5A",
+    emoji: "🎯",
+  },
+};

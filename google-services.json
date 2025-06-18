@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "599255592851",
+    "project_id": "ludos-training-tracker",
+    "storage_bucket": "ludos-training-tracker.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:599255592851:android:0bcc3354fca0819840c266",
+        "android_client_info": {
+          "package_name": "com.dog.training"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDPT2FZbLupAd9F_V1CB87i5CUl2oaULLg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:599255592851:android:5c758bc134326f9b40c266",
+        "android_client_info": {
+          "package_name": "com.example.ludotraining"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDPT2FZbLupAd9F_V1CB87i5CUl2oaULLg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
