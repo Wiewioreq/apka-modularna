@@ -1,5 +1,6 @@
 import firebase from "firebase/compat/app";
 import "firebase/compat/firestore";
+import "firebase/compat/storage"; // Dodaj to jeśli będziesz używać Storage!
 import { Platform } from "react-native";
 
 // ========== FIREBASE CONFIG ==========
@@ -12,7 +13,7 @@ const firebaseConfig = {
   appId: "1:599255592851:android:5c758bc134326f9b40c266",
 };
 
-let db;
+let db, storage;
 
 try {
   if (!firebase.apps.length) {
@@ -20,6 +21,7 @@ try {
   }
 
   db = firebase.firestore();
+  storage = firebase.storage();
 
   if (Platform.OS === "android" || Platform.OS === "ios") {
     db.enablePersistence({ synchronizeTabs: false }).catch(function (err) {
@@ -30,5 +32,5 @@ try {
   console.error("Firebase initialization failed:", error);
 }
 
-export { db, firebase };
+export { db, storage, firebase };
 export default db;
