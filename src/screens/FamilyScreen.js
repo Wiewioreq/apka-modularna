@@ -29,7 +29,7 @@ export const FamilyScreen = ({
           <Text style={{ fontSize: 20, marginRight: 8 }}>👨‍👩‍👧‍👦</Text> Training Pack Members
         </Text>
         {family.map((member) => (
-          <View key={member.id} style={styles.enhancedFamilyMemberRow}>
+          <View key={String(member.id)} style={styles.enhancedFamilyMemberRow}>
             {editingMemberId === member.id ? (
               <View style={styles.familyEditContainer}>
                 <TextInput

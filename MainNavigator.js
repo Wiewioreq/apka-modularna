@@ -22,7 +22,19 @@ import * as Notifications from "expo-notifications";
 import * as ImagePicker from "expo-image-picker";
 import Svg, { Circle, Path } from "react-native-svg";
 import { storage, db } from "./src/firebase/config";
+import "react-native-get-random-values"; // Required for uuid
 import { v4 as uuidv4 } from "uuid";
+import {
+  getDoc,
+  setDoc,
+  doc,
+  onSnapshot,
+} from "firebase/firestore";
+import {
+  ref as storageRef,
+  uploadBytes,
+  getDownloadURL,
+} from "firebase/storage";
 
 import { ErrorBoundary } from "./src/components/ErrorBoundary";
 import { DailyScreen } from "./src/screens/DailyScreen";
@@ -52,8 +64,8 @@ import {
 import { styles } from "./src/styles/styles";
 
 // ========== CONSTANTS ==========
-const APP_VERSION = "2.0.0 - Puppy Edition";
-const BUILD_DATE = "2025-06-16";
+const APP_VERSION = "2.0.1 - Fixes";
+const BUILD_DATE = "2025-06-26";
 
 // ========== CUSTOM ICONS ==========
 const DogHouseIcon = ({ size = 22, color = "#000" }) => (
@@ -150,10 +162,8 @@ async function updateDogInfoStorageAndFirestore(familyId, name, breed, dob) {
   await AsyncStorage.setItem("dogBreed", breed);
   await AsyncStorage.setItem("dogDob", dob);
   if (familyId) {
-    await db.collection("families").doc(familyId).set(
-      { dogName: name, dogBreed: breed, dogDob: dob },
-      { merge: true }
-    );
+    const familyDocRef = doc(db, "families", familyId);
+    await setDoc(familyDocRef, { dogName: name, dogBreed: breed, dogDob: dob }, { merge: true });
   }
 }
 
@@ -247,6 +257,9 @@ export default function MainNavigator() {
   }, []);
 
   const handleQuickTakePhoto = async () => {
+    if (!familyId) {
+        return Alert.alert("🏠 No Family Pack", "You need to be in a family pack to save photos.");
+    }
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
       return Alert.alert(
@@ -268,9 +281,11 @@ export default function MainNavigator() {
       const blob = await resp.blob();
       const ext = asset.uri.split(".").pop() || "jpg";
       const filename = `photos/${familyId}/${uuidv4()}.${ext}`;
-      const ref = storage.ref().child(filename);
-      const snap = await ref.put(blob);
-      const downloadURL = await snap.ref.getDownloadURL();
+      const photoRef = storageRef(storage, filename);
+      
+      showToast("Uploading photo...", "info");
+      const snap = await uploadBytes(photoRef, blob);
+      const downloadURL = await getDownloadURL(snap.ref);
 
       const newPhoto = {
         url: downloadURL,
@@ -280,7 +295,8 @@ export default function MainNavigator() {
       handlePhotoAdded(newPhoto);
     } catch (error) {
       console.error("Error taking/uploading photo:", error);
-      showToast("Failed to save photo", "error");
+      showToast(`Failed to save photo: ${error.code || error.message}`, "error");
+      Alert.alert("Photo Upload Error", `Could not upload photo. Please check your connection to Firebase.`);
     }
   };
 
@@ -308,7 +324,8 @@ export default function MainNavigator() {
       calendarNotes,
     };
     try {
-      await db.collection("families").doc(familyId).set(dataToSync, { merge: true });
+      const familyDocRef = doc(db, "families", familyId);
+      await setDoc(familyDocRef, dataToSync, { merge: true });
       lastSyncedData.current = { ...dataToSync };
       showToast("🔄 Pack data synced successfully!", "success");
     } catch (err) {
@@ -343,7 +360,8 @@ export default function MainNavigator() {
 
       try {
         setSyncing(true);
-        await db.collection("families").doc(familyId).set(data, { merge: true });
+        const familyDocRef = doc(db, "families", familyId);
+        await setDoc(familyDocRef, data, { merge: true });
         lastSyncedData.current = { ...data };
       } catch (e) {
         console.error("Failed to sync to Firebase:", e);
@@ -403,58 +421,57 @@ export default function MainNavigator() {
   useEffect(() => {
     if (!familyId) return;
     setLoading(true);
-    const unsubscribe = db
-      .collection("families")
-      .doc(familyId)
-      .onSnapshot(
-        (docSnap) => {
-          if (docSnap.exists) {
-            const data = docSnap.data();
-            if (data.currentWeek !== undefined && data.currentWeek !== currentWeek)
-              setCurrentWeek(data.currentWeek);
-            if (data.completedActivities && !deepEqual(data.completedActivities, completedActivities))
-              setCompletedActivities(data.completedActivities);
-            if (data.dailyNotes && !deepEqual(data.dailyNotes, dailyNotes))
-              setDailyNotes(data.dailyNotes);
-            if (data.family && !deepEqual(data.family, family)) setFamily(data.family);
-            if (data.sharedNotes && !deepEqual(data.sharedNotes, sharedNotes))
-              setSharedNotes(data.sharedNotes);
-            if (data.dogName && data.dogName !== dogName) setDogName(data.dogName);
-            if (data.dogBreed && data.dogBreed !== dogBreed) setDogBreed(data.dogBreed);
-            if (data.dogDob && data.dogDob !== dogDob) setDogDob(data.dogDob);
-            if (data.completedDailyByDate && !deepEqual(data.completedDailyByDate, completedDailyByDate))
-              setCompletedDailyByDate(data.completedDailyByDate);
-            if (data.progressPhotos && !deepEqual(data.progressPhotos, progressPhotos))
-              setProgressPhotos(data.progressPhotos);
-            if (data.unlockedAchievements && !deepEqual(data.unlockedAchievements, unlockedAchievements))
-              setUnlockedAchievements(data.unlockedAchievements);
-            if (data.calendarNotes && !deepEqual(data.calendarNotes, calendarNotes))
-              setCalendarNotes(data.calendarNotes);
+    const familyDocRef = doc(db, "families", familyId);
+    const unsubscribe = onSnapshot(
+      familyDocRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.currentWeek !== undefined && data.currentWeek !== currentWeek)
+            setCurrentWeek(data.currentWeek);
+          if (data.completedActivities && !deepEqual(data.completedActivities, completedActivities))
+            setCompletedActivities(data.completedActivities);
+          if (data.dailyNotes && !deepEqual(data.dailyNotes, dailyNotes))
+            setDailyNotes(data.dailyNotes);
+          if (data.family && !deepEqual(data.family, family)) setFamily(data.family);
+          if (data.sharedNotes && !deepEqual(data.sharedNotes, sharedNotes))
+            setSharedNotes(data.sharedNotes);
+          if (data.dogName && data.dogName !== dogName) setDogName(data.dogName);
+          if (data.dogBreed && data.dogBreed !== dogBreed) setDogBreed(data.dogBreed);
+          if (data.dogDob && data.dogDob !== dogDob) setDogDob(data.dogDob);
+          if (data.completedDailyByDate && !deepEqual(data.completedDailyByDate, completedDailyByDate))
+            setCompletedDailyByDate(data.completedDailyByDate);
+          if (data.progressPhotos && !deepEqual(data.progressPhotos, progressPhotos))
+            setProgressPhotos(data.progressPhotos);
+          if (data.unlockedAchievements && !deepEqual(data.unlockedAchievements, unlockedAchievements))
+            setUnlockedAchievements(data.unlockedAchievements);
+          if (data.calendarNotes && !deepEqual(data.calendarNotes, calendarNotes))
+            setCalendarNotes(data.calendarNotes);
 
-            lastSyncedData.current = {
-              currentWeek: data.currentWeek ?? 1,
-              completedActivities: data.completedActivities ?? [],
-              dailyNotes: data.dailyNotes ?? {},
-              dogName: data.dogName,
-              dogBreed: data.dogBreed,
-              dogDob: data.dogDob,
-              family: data.family ?? [],
-              sharedNotes: data.sharedNotes ?? [],
-              completedDailyByDate: data.completedDailyByDate ?? {},
-              progressPhotos: data.progressPhotos ?? [],
-              unlockedAchievements: data.unlockedAchievements ?? [],
-              calendarNotes: data.calendarNotes ?? {},
-            };
-          }
-          setLoading(false);
-        },
-        (err) => {
-          console.error("Firestore snapshot error:", err);
-          setLoading(false);
+          lastSyncedData.current = {
+            currentWeek: data.currentWeek ?? 1,
+            completedActivities: data.completedActivities ?? [],
+            dailyNotes: data.dailyNotes ?? {},
+            dogName: data.dogName,
+            dogBreed: data.dogBreed,
+            dogDob: data.dogDob,
+            family: data.family ?? [],
+            sharedNotes: data.sharedNotes ?? [],
+            completedDailyByDate: data.completedDailyByDate ?? {},
+            progressPhotos: data.progressPhotos ?? [],
+            unlockedAchievements: data.unlockedAchievements ?? [],
+            calendarNotes: data.calendarNotes ?? {},
+          };
         }
-      );
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Firestore snapshot error:", err);
+        setLoading(false);
+      }
+    );
     return unsubscribe;
-  }, [familyId, currentWeek, completedActivities, dailyNotes, family, sharedNotes, dogName, dogBreed, dogDob, completedDailyByDate, progressPhotos, unlockedAchievements, calendarNotes]);
+  }, [familyId]);
 
   // Achievements effect
   useEffect(() => {
@@ -479,7 +496,7 @@ export default function MainNavigator() {
     )
       newAch.push("week_perfect");
     if (newAch.length) {
-      setUnlockedAchievements((prev) => [...prev, ...newAch]);
+      setUnlockedAchievements((prev) => [...new Set([...prev, ...newAch])]);
       newAch.forEach((id) => {
         const ach = achievements.find((a) => a.id === id);
         if (ach) showToast(`🏆 Achievement Unlocked: ${ach.title} 🐕`, "success");
@@ -551,20 +568,22 @@ export default function MainNavigator() {
 
   // Handlers: family ID, dog details, toggles, notes, sharedNotes, family management, modals...
   const handleFamilyIdSubmit = async () => {
-    if (!inputId.trim()) return;
+    const trimmedId = inputId.trim();
+    if (!trimmedId) return;
     setCheckingFamilyId(true);
     try {
-      const doc = await db.collection("families").doc(inputId.trim()).get();
-      if (doc.exists) {
-        const data = doc.data();
+      const familyDocRef = doc(db, "families", trimmedId);
+      const docSnap = await getDoc(familyDocRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
         if (data.dogName && data.dogBreed && data.dogDob) {
           await AsyncStorage.multiSet([
-            ["familyId", inputId.trim()],
+            ["familyId", trimmedId],
             ["dogName", data.dogName],
             ["dogBreed", data.dogBreed],
             ["dogDob", data.dogDob],
           ]);
-          setFamilyId(inputId.trim());
+          setFamilyId(trimmedId);
           setDogName(data.dogName);
           setDogBreed(data.dogBreed);
           setDogDob(data.dogDob);
@@ -575,7 +594,7 @@ export default function MainNavigator() {
       } else {
         Alert.alert(
           "🎉 Create New Training Pack?",
-          `No pack for ID "${inputId.trim()}". Create new?`,
+          `No pack for ID "${trimmedId}". Create new?`,
           [
             { text: "❌ Cancel", style: "cancel" },
             {
@@ -586,50 +605,64 @@ export default function MainNavigator() {
         );
       }
     } catch (e) {
-      Alert.alert("🌐 Connection Issue", e.message);
+      console.error("Firebase connection error:", e);
+      Alert.alert("🌐 Connection Issue", `Oops! Something went wrong. Please check your internet connection and Firebase setup. Error: ${e.message}`);
     } finally {
       setCheckingFamilyId(false);
     }
   };
 
   const handleDogDetailsSubmit = async () => {
+    const trimmedId = inputId.trim();
+    const trimmedDogName = inputDog.trim();
     const breedSave = inputBreed === "Other" ? inputBreedOther.trim() : inputBreed;
-    if (!inputId.trim() || !inputDog.trim() || !breedSave || !inputDob.trim()) {
+    const trimmedDob = inputDob.trim();
+
+    if (!trimmedId || !trimmedDogName || !breedSave || !trimmedDob) {
       Alert.alert("🐕 Missing Pup Info", "Fill all required fields!");
       return;
     }
-    if (!isValidDate(inputDob.trim())) {
+    if (!isValidDate(trimmedDob)) {
       Alert.alert("🎂 Invalid Date", "Use YYYY-MM-DD format.");
       return;
     }
     try {
-      await db.collection("families").doc(inputId.trim()).set(
-        {
-          dogName: inputDog.trim(),
-          dogBreed: breedSave,
-          dogDob: inputDob.trim(),
-          family: [
-            { id: 1, name: "🏆 Primary Trainer", editing: false },
-            { id: 2, name: "👨‍👩‍👧‍👦 Family Member 2", editing: false },
-            { id: 3, name: "👨‍👩‍👧‍👦 Family Member 3", editing: false },
-          ],
-        },
-        { merge: true }
-      );
+      const familyDocRef = doc(db, "families", trimmedId);
+      await setDoc(familyDocRef, {
+        dogName: trimmedDogName,
+        dogBreed: breedSave,
+        dogDob: trimmedDob,
+        family: [
+          { id: 1, name: "🏆 Primary Trainer", editing: false },
+          { id: 2, name: "👨‍👩‍👧‍👦 Family Member 2", editing: false },
+          { id: 3, name: "👨‍👩‍👧‍👦 Family Member 3", editing: false },
+        ],
+        // Initialize other fields
+        currentWeek: 1,
+        completedActivities: [],
+        dailyNotes: {},
+        sharedNotes: [],
+        completedDailyByDate: {},
+        progressPhotos: [],
+        unlockedAchievements: [],
+        calendarNotes: {},
+      }, { merge: true });
+
       await AsyncStorage.multiSet([
-        ["familyId", inputId.trim()],
-        ["dogName", inputDog.trim()],
+        ["familyId", trimmedId],
+        ["dogName", trimmedDogName],
         ["dogBreed", breedSave],
-        ["dogDob", inputDob.trim()],
+        ["dogDob", trimmedDob],
       ]);
-      setFamilyId(inputId.trim());
-      setDogName(inputDog.trim());
+      setFamilyId(trimmedId);
+      setDogName(trimmedDogName);
       setDogBreed(breedSave);
-      setDogDob(inputDob.trim());
+      setDogDob(trimmedDob);
       setShowDogInput(false);
       showToast("🎉 Training pack created! Welcome to the pack!", "success");
     } catch (e) {
-      Alert.alert("🌐 Connection Issue", e.message);
+      console.error("Firebase connection error:", e);
+      Alert.alert("🌐 Connection Issue", `Oops! Something went wrong. Please check your internet connection and Firebase setup. Error: ${e.message}`);
     }
   };
 
@@ -640,7 +673,7 @@ export default function MainNavigator() {
         prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
       );
     },
-    [completedActivities]
+    []
   );
 
   const toggleDailyActivity = useCallback(
@@ -663,7 +696,8 @@ export default function MainNavigator() {
       setDailyNotes(updated);
       if (familyId) {
         try {
-          await db.collection("families").doc(familyId).set({ dailyNotes: updated }, { merge: true });
+          const familyDocRef = doc(db, "families", familyId);
+          await setDoc(familyDocRef, { dailyNotes: updated }, { merge: true });
         } catch (e) {
           showToast("Failed to save note. 📶", "error");
         }
@@ -685,11 +719,13 @@ export default function MainNavigator() {
     setSharedNotes(updated);
     setNewSharedNote("");
     try {
-      await db.collection("families").doc(familyId).set({ sharedNotes: updated }, { merge: true });
+      if (!familyId) return;
+      const familyDocRef = doc(db, "families", familyId);
+      await setDoc(familyDocRef, { sharedNotes: updated }, { merge: true });
       showToast("📝 Note shared with your pack!", "success");
     } catch (e) {
       Alert.alert("🐕 Oops!", "Failed to save note.");
-      setSharedNotes(sharedNotes);
+      setSharedNotes(sharedNotes); // Revert on fail
       setNewSharedNote(text);
     }
   };
@@ -706,7 +742,9 @@ export default function MainNavigator() {
     setEditingNoteId(null);
     setEditingNoteText("");
     try {
-      await db.collection("families").doc(familyId).set({ sharedNotes: updated }, { merge: true });
+      if (!familyId) return;
+      const familyDocRef = doc(db, "families", familyId);
+      await setDoc(familyDocRef, { sharedNotes: updated }, { merge: true });
       showToast("✏️ Note updated!", "success");
     } catch (e) {
       Alert.alert("🐕 Oops!", "Failed to update note.");
@@ -750,7 +788,7 @@ export default function MainNavigator() {
   const handleAddFamilyMember = useCallback(() => {
     const name = newFamilyName.trim();
     if (!name) return;
-    const prefixed = name.startsWith("🐕") ? name : `👥 ${name}`;
+    const prefixed = name.startsWith("🐕") || name.startsWith("🏆") || name.startsWith("👨‍👩‍👧‍👦") || name.startsWith("👥") ? name : `👥 ${name}`;
     setFamily((f) => [...f, { id: Date.now(), name: prefixed, editing: false }]);
     setNewFamilyName("");
     showToast("🎉 New pack member added!", "success");
@@ -807,13 +845,18 @@ export default function MainNavigator() {
               "dogBreed",
               "dogDob",
               "completedDailyByDate",
+              "unlockedAchievements",
+              "progressPhotos",
+              "memberName"
             ]);
+            // Reset all state
             setFamilyId(null);
             setDogName(null);
             setDogBreed(null);
             setDogDob(null);
             setShowDogInput(false);
-            setFamilyDogLoading(false);
+            setFamilyDogLoading(true); // Show loading screen briefly
+            setTimeout(() => setFamilyDogLoading(false), 500);
             showToast("👋 Switched to new pack setup!", "info");
           },
         },
@@ -825,8 +868,11 @@ export default function MainNavigator() {
 
   const handleQuickMarkComplete = () => {
     const today = getCurrentDate();
+    const allDailyKeys = Object.entries(dailyRoutine).flatMap(([s, acts]) =>
+      acts.map((a) => `daily-${s}-${a}`)
+    );
     const done = (completedDailyByDate[today] || []).length;
-    const total = Object.entries(dailyRoutine).flat().length;
+    const total = allDailyKeys.length;
     if (done >= total) {
       showToast("🎉 All daily tasks completed! 🐕‍🦺", "success");
     } else {
@@ -849,14 +895,15 @@ export default function MainNavigator() {
   }, []);
 
   const handleSaveNote = async () => {
-    if (noteInputText.trim()) {
+    if (noteInputText.trim() && currentNoteDate) {
       const newNotes = {
         ...calendarNotes,
         [currentNoteDate]: { text: noteInputText.trim(), savedAt: Date.now() },
       };
       setCalendarNotes(newNotes);
       if (familyId) {
-        await db.collection("families").doc(familyId).set({ calendarNotes: newNotes }, { merge: true });
+        const familyDocRef = doc(db, "families", familyId);
+        await setDoc(familyDocRef, { calendarNotes: newNotes }, { merge: true });
       }
     }
     setShowNoteModal(false);
@@ -885,8 +932,9 @@ export default function MainNavigator() {
             value={inputId}
             onChangeText={setInputId}
             style={styles.setupInput}
+            autoCapitalize="none"
           />
-          <TouchableOpacity onPress={handleFamilyIdSubmit} style={styles.setupButton}>
+          <TouchableOpacity onPress={handleFamilyIdSubmit} style={styles.setupButton} disabled={checkingFamilyId}>
             {checkingFamilyId ? <ActivityIndicator color="#fff"/> : <Text style={styles.setupButtonText}>🚀 Let's Start</Text>}
           </TouchableOpacity>
         </View>
@@ -922,7 +970,7 @@ export default function MainNavigator() {
           placeholder="🎂 DOB (YYYY-MM-DD)"
           value={inputDob}
           onChangeText={setInputDob}
-          keyboardType={Platform.OS === "ios" ? "numbers-and-punctuation" : "numeric"}
+          keyboardType={Platform.OS === "ios" ? "numbers-and-punctuation" : "default"}
           style={styles.setupInput}
           maxLength={10}
         />
@@ -934,295 +982,297 @@ export default function MainNavigator() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.mainContent}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          {isOffline && (
-            <View style={styles.offlineBanner}>
-              <Text>📶 You're offline. Changes will sync when back online!</Text>
-            </View>
-          )}
-          {showDailyConfetti && <ConfettiCannon count={200} origin={{ x: -10, y: 0 }} fadeOut />}
-          {showWeeklyConfetti && <ConfettiCannon count={300} origin={{ x: -10, y: 0 }} fadeOut />}
+    <ErrorBoundary>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.mainContent}>
+          <ScrollView contentContainerStyle={styles.scrollContent}>
+            {isOffline && (
+              <View style={styles.offlineBanner}>
+                <Text>📶 You're offline. Changes will sync when back online!</Text>
+              </View>
+            )}
+            {showDailyConfetti && <ConfettiCannon count={200} origin={{ x: -10, y: 0 }} fadeOut />}
+            {showWeeklyConfetti && <ConfettiCannon count={300} origin={{ x: -10, y: 0 }} fadeOut />}
 
-          {/* HEADER */}
-          <View style={styles.enhancedHeaderContainer}>
-            <View style={styles.headerTop}>
-              <View style={styles.dogInfoContainer}>
-                <DogAvatar dogName={dogName} dogBreed={dogBreed} />
-                <View style={styles.dogInfo}>
-                  <Text style={styles.enhancedDogName}>🐕 {dogName}</Text>
-                  <Text style={styles.dogDetails}>{dogBreed} • {currentDogAge}</Text>
+            {/* HEADER */}
+            <View style={styles.enhancedHeaderContainer}>
+              <View style={styles.headerTop}>
+                <View style={styles.dogInfoContainer}>
+                  <DogAvatar dogName={dogName} dogBreed={dogBreed} />
+                  <View style={styles.dogInfo}>
+                    <Text style={styles.enhancedDogName}>🐕 {dogName}</Text>
+                    <Text style={styles.dogDetails}>{dogBreed} • {currentDogAge}</Text>
+                  </View>
+                </View>
+                <View style={styles.dateTimeContainer}>
+                  <Text style={styles.currentDate}>📅 {getCurrentDate()}</Text>
+                  <Text style={styles.currentTime}>🕐 {getCurrentTime()}</Text>
+                  <TouchableOpacity
+                    style={styles.forceSyncButton}
+                    onPress={forceSyncToFirebase}
+                    disabled={syncing || isOffline}
+                  >
+                    <Text>🔄</Text><Text style={styles.forceSyncText}>Force Sync</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
-              <View style={styles.dateTimeContainer}>
-                <Text style={styles.currentDate}>📅 {getCurrentDate()}</Text>
-                <Text style={styles.currentTime}>🕐 {getCurrentTime()}</Text>
-                <TouchableOpacity
-                  style={styles.forceSyncButton}
-                  onPress={forceSyncToFirebase}
-                  disabled={syncing || isOffline}
-                >
-                  <Text>🔄</Text><Text style={styles.forceSyncText}>Force Sync</Text>
+              <View style={styles.headerBottom}>
+                <TouchableOpacity onPress={openEditDogModal} style={styles.editButton}>
+                  <Text>✏️ Edit Pup Info</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+                  <Text>🔄 Switch Pack</Text>
                 </TouchableOpacity>
               </View>
             </View>
-            <View style={styles.headerBottom}>
-              <TouchableOpacity onPress={openEditDogModal} style={styles.editButton}>
-                <Text>✏️ Edit Pup Info</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-                <Text>🔄 Switch Pack</Text>
-              </TouchableOpacity>
+
+            {/* NAV TABS */}
+            <View style={styles.enhancedNavigationContainer}>
+              {[
+                { key: "daily", Icon: DogHouseIcon, label: "🏠 Home" },
+                { key: "weekly", Icon: CalendarPawIcon, label: "📅 Weekly" },
+                { key: "progress", Icon: PawIcon, label: "📈 Progress" },
+                { key: "notes", Icon: NotesBoneIcon, label: "📝 Notes" },
+                { key: "achievements", Icon: TrophyIcon, label: "🏆 Awards" },
+                { key: "family", Icon: DogFamilyIcon, label: "👨‍👩‍👧‍👦 Pack" },
+              ].map(({ key, Icon, label }) => {
+                const active = viewMode === key;
+                const color = active ? dogThemeColors.light : dogThemeColors.mediumText;
+                return (
+                  <TouchableOpacity
+                    key={key}
+                    style={[styles.navTab, active && styles.enhancedNavTabActive]}
+                    onPress={() => setViewMode(key)}
+                  >
+                    <Icon size={22} color={color} />
+                    <Text style={[styles.navTabText, { color }]}>{label}</Text>
+                    {active && <View style={styles.activeTabIndicator} />}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-          </View>
 
-          {/* NAV TABS */}
-          <View style={styles.enhancedNavigationContainer}>
-            {[
-              { key: "daily", Icon: DogHouseIcon, label: "🏠 Home" },
-              { key: "weekly", Icon: CalendarPawIcon, label: "📅 Weekly" },
-              { key: "progress", Icon: PawIcon, label: "📈 Progress" },
-              { key: "notes", Icon: NotesBoneIcon, label: "📝 Notes" },
-              { key: "achievements", Icon: TrophyIcon, label: "🏆 Awards" },
-              { key: "family", Icon: DogFamilyIcon, label: "👨‍👩‍👧‍👦 Pack" },
-            ].map(({ key, Icon, label }) => {
-              const active = viewMode === key;
-              const color = active ? dogThemeColors.light : dogThemeColors.mediumText;
-              return (
-                <TouchableOpacity
-                  key={key}
-                  style={[styles.navTab, active && styles.enhancedNavTabActive]}
-                  onPress={() => setViewMode(key)}
-                >
-                  <Icon size={22} color={color} />
-                  <Text style={[styles.navTabText, { color }]}>{label}</Text>
-                  {active && <View style={styles.activeTabIndicator} />}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {/* SCREENS */}
-          {viewMode === "daily" && (
-            <DailyScreen
-              dailyRate={
-                (completedDailyByDate[getCurrentDate()] || []).length /
-                Object.entries(dailyRoutine).flat().length
-              }
-              completedDailyByDate={completedDailyByDate}
-              toggleDailyActivity={toggleDailyActivity}
-              currentWeek={currentWeek}
-              weeklyPlans={weeklyPlans}
-              completedActivities={completedActivities}
-              toggleActivity={toggleActivity}
-              selectedDate={selectedDate}
-              dailyNotes={dailyNotes}
-              addNote={addNote}
-              dogBreed={dogBreed}
-              completionRate={
-                (completedActivities.filter((a) => a.startsWith(`${currentWeek}-`)).length) /
-                (weeklyPlans[currentWeek] || []).length
-              }
-              currentStreak={calculateStreak(completedDailyByDate).currentStreak}
-              bestStreak={calculateStreak(completedDailyByDate).bestStreak}
-            />
-          )}
-          {viewMode === "weekly" && (
-            <WeeklyScreen
-              currentWeek={currentWeek}
-              setCurrentWeek={setCurrentWeek}
-              completionRate={
-                (completedActivities.filter((a) => a.startsWith(`${currentWeek}-`)).length) /
-                (weeklyPlans[currentWeek] || []).length
-              }
-              completedActivities={completedActivities}
-              toggleActivity={toggleActivity}
-              progressPhotos={progressPhotos}
-              handlePhotoAdded={handlePhotoAdded}
-            />
-          )}
-          {viewMode === "progress" && (
-            <ProgressScreen
-              currentWeek={currentWeek}
-              completionRate={
-                (completedActivities.filter((a) => a.startsWith(`${currentWeek}-`)).length) /
-                (weeklyPlans[currentWeek] || []).length
-              }
-              dailyRate={
-                (completedDailyByDate[getCurrentDate()] || []).length /
-                Object.entries(dailyRoutine).flat().length
-              }
-              completedDailyByDate={completedDailyByDate}
-              selectedDate={selectedDate}
-              setSelectedDate={setSelectedDate}
-              calendarNotes={calendarNotes}
-              handleOpenNoteModal={handleOpenNoteModal}
-              visibleNotes={visibleNotes}
-              setVisibleNotes={setVisibleNotes}
-              completedActivities={completedActivities}
-            />
-          )}
-          {viewMode === "notes" && (
-            <NotesScreen
-              newSharedNote={newSharedNote}
-              setNewSharedNote={setNewSharedNote}
-              handleAddSharedNote={handleAddSharedNote}
-              sharedNotes={sharedNotes}
-              notesLoading={notesLoading}
-              editingNoteId={editingNoteId}
-              setEditingNoteId={setEditingNoteId}
-              editingNoteText={editingNoteText}
-              setEditingNoteText={setEditingNoteText}
-              saveNoteEdit={saveNoteEdit}
-              currentUserName={currentUserName}
-            />
-          )}
-          {viewMode === "achievements" && (
-            <AchievementsScreen
-              unlockedAchievements={unlockedAchievements}
-              currentStreak={calculateStreak(completedDailyByDate).currentStreak}
-              bestStreak={calculateStreak(completedDailyByDate).bestStreak}
-            />
-          )}
-          {viewMode === "family" && (
-            <FamilyScreen
-              family={family}
-              editingMemberId={editingMemberId}
-              editFamilyName={editFamilyName}
-              setEditFamilyName={setEditFamilyName}
-              handleEditFamilyMember={handleEditFamilyMember}
-              handleSaveFamilyMember={handleSaveFamilyMember}
-              handleRemoveFamilyMember={handleRemoveFamilyMember}
-              newFamilyName={newFamilyName}
-              setNewFamilyName={setNewFamilyName}
-              handleAddFamilyMember={handleAddFamilyMember}
-            />
-          )}
-        </ScrollView>
-
-        <QuickActions
-          onAddNote={handleQuickAddNote}
-          onTakePhoto={handleQuickTakePhoto}
-          onMarkComplete={handleQuickMarkComplete}
-        />
-
-        {syncing && (
-          <View style={styles.syncIndicator}>
-            <Text>🔄 Syncing with pack...</Text>
-          </View>
-        )}
-      </View>
-
-      {/* EDIT PUP MODAL */}
-      <Modal visible={editDogModal} animationType="slide" presentationStyle="pageSheet">
-        <SafeAreaView style={styles.enhancedModalContainer}>
-          <View style={styles.enhancedModalHeader}>
-            <TouchableOpacity onPress={() => setEditDogModal(false)}><Text>❌</Text></TouchableOpacity>
-            <Text style={styles.enhancedModalTitle}>🐕 Edit Pup Info</Text>
-            <TouchableOpacity onPress={saveDogInfo}><Text>💾 Save</Text></TouchableOpacity>
-          </View>
-          <ScrollView style={styles.enhancedModalContent}>
-            <View style={styles.enhancedModalSection}>
-              <Text style={styles.enhancedModalLabel}>🐕 Dog Name</Text>
-              <TextInput
-                style={styles.enhancedModalInput}
-                value={editDogName}
-                onChangeText={setEditDogName}
-                placeholder="Dog Name"
+            {/* SCREENS */}
+            {viewMode === "daily" && (
+              <DailyScreen
+                dailyRate={
+                  (completedDailyByDate[getCurrentDate()] || []).length /
+                  (Object.values(dailyRoutine).flat().length || 1)
+                }
+                completedDailyByDate={completedDailyByDate}
+                toggleDailyActivity={toggleDailyActivity}
+                currentWeek={currentWeek}
+                weeklyPlans={weeklyPlans}
+                completedActivities={completedActivities}
+                toggleActivity={toggleActivity}
+                selectedDate={selectedDate}
+                dailyNotes={dailyNotes}
+                addNote={addNote}
+                dogBreed={dogBreed}
+                completionRate={
+                  (completedActivities.filter((a) => a.startsWith(`${currentWeek}-`)).length) /
+                  ((weeklyPlans[currentWeek] || []).length || 1)
+                }
+                currentStreak={calculateStreak(completedDailyByDate).currentStreak}
+                bestStreak={calculateStreak(completedDailyByDate).bestStreak}
               />
-            </View>
-            <View style={styles.enhancedModalSection}>
-              <Text style={styles.enhancedModalLabel}>🐕‍🦺 Breed</Text>
-              <RNPickerSelect
-                onValueChange={setEditDogBreed}
-                value={editDogBreed}
-                placeholder={{ label: "🐕 Select Breed...", value: "" }}
-                items={[
-                  ...commonUKBreeds.map((b) => ({ label: b, value: b })),
-                  { label: "🐕 Other", value: "Other" },
-                ]}
-                style={{ inputIOS: styles.enhancedModalPickerInput, inputAndroid: styles.enhancedModalPickerInput }}
+            )}
+            {viewMode === "weekly" && (
+              <WeeklyScreen
+                currentWeek={currentWeek}
+                setCurrentWeek={setCurrentWeek}
+                completionRate={
+                  (completedActivities.filter((a) => a.startsWith(`${currentWeek}-`)).length) /
+                  ((weeklyPlans[currentWeek] || []).length || 1)
+                }
+                completedActivities={completedActivities}
+                toggleActivity={toggleActivity}
+                progressPhotos={progressPhotos}
+                handlePhotoAdded={handlePhotoAdded}
               />
-              {editDogBreed === "Other" && (
-                <TextInput
-                  style={[styles.enhancedModalInput, styles.modalInputMarginTop]}
-                  value={editDogBreedOther}
-                  onChangeText={setEditDogBreedOther}
-                  placeholder="✏️ Specify breed"
-                />
-              )}
-            </View>
-            <View style={styles.enhancedModalSection}>
-              <Text style={styles.enhancedModalLabel}>🎂 Date of Birth (YYYY-MM-DD)</Text>
-              <TextInput
-                style={styles.enhancedModalInput}
-                value={editDogDob}
-                onChangeText={setEditDogDob}
-                placeholder="YYYY-MM-DD"
-                keyboardType={Platform.OS === "ios" ? "numbers-and-punctuation" : "numeric"}
-                maxLength={10}
+            )}
+            {viewMode === "progress" && (
+              <ProgressScreen
+                currentWeek={currentWeek}
+                completionRate={
+                  (completedActivities.filter((a) => a.startsWith(`${currentWeek}-`)).length) /
+                  ((weeklyPlans[currentWeek] || []).length || 1)
+                }
+                dailyRate={
+                  (completedDailyByDate[getCurrentDate()] || []).length /
+                  (Object.values(dailyRoutine).flat().length || 1)
+                }
+                completedDailyByDate={completedDailyByDate}
+                selectedDate={selectedDate}
+                setSelectedDate={setSelectedDate}
+                calendarNotes={calendarNotes}
+                handleOpenNoteModal={handleOpenNoteModal}
+                visibleNotes={visibleNotes}
+                setVisibleNotes={setVisibleNotes}
+                completedActivities={completedActivities}
               />
-            </View>
+            )}
+            {viewMode === "notes" && (
+              <NotesScreen
+                newSharedNote={newSharedNote}
+                setNewSharedNote={setNewSharedNote}
+                handleAddSharedNote={handleAddSharedNote}
+                sharedNotes={sharedNotes}
+                notesLoading={notesLoading}
+                editingNoteId={editingNoteId}
+                setEditingNoteId={setEditingNoteId}
+                editingNoteText={editingNoteText}
+                setEditingNoteText={setEditingNoteText}
+                saveNoteEdit={saveNoteEdit}
+                currentUserName={currentUserName}
+              />
+            )}
+            {viewMode === "achievements" && (
+              <AchievementsScreen
+                unlockedAchievements={unlockedAchievements}
+                currentStreak={calculateStreak(completedDailyByDate).currentStreak}
+                bestStreak={calculateStreak(completedDailyByDate).bestStreak}
+              />
+            )}
+            {viewMode === "family" && (
+              <FamilyScreen
+                family={family}
+                editingMemberId={editingMemberId}
+                editFamilyName={editFamilyName}
+                setEditFamilyName={setEditFamilyName}
+                handleEditFamilyMember={handleEditFamilyMember}
+                handleSaveFamilyMember={handleSaveFamilyMember}
+                handleRemoveFamilyMember={handleRemoveFamilyMember}
+                newFamilyName={newFamilyName}
+                setNewFamilyName={setNewFamilyName}
+                handleAddFamilyMember={handleAddFamilyMember}
+              />
+            )}
           </ScrollView>
-        </SafeAreaView>
-      </Modal>
 
-      {/* QUICK NOTE MODAL */}
-      <Modal visible={showQuickNote} animationType="slide" transparent>
-        <View style={styles.quickNoteOverlay}>
-          <View style={styles.enhancedQuickNoteModal}>
-            <View style={styles.quickNoteHeader}>
-              <Text style={styles.enhancedQuickNoteTitle}>📝 Quick Training Note</Text>
-              <TouchableOpacity onPress={() => setShowQuickNote(false)}><Text>❌</Text></TouchableOpacity>
+          <QuickActions
+            onAddNote={handleQuickAddNote}
+            onTakePhoto={handleQuickTakePhoto}
+            onMarkComplete={handleQuickMarkComplete}
+          />
+
+          {syncing && (
+            <View style={styles.syncIndicator}>
+              <Text>🔄 Syncing with pack...</Text>
             </View>
-            <TextInput
-              style={styles.enhancedQuickNoteInput}
-              placeholder="🐕 Add a quick training note..."
-              value={quickNoteText}
-              onChangeText={setQuickNoteText}
-              multiline
-              numberOfLines={4}
-              autoFocus
-            />
-            <View style={styles.quickNoteActions}>
-              <TouchableOpacity style={styles.enhancedQuickNoteCancel} onPress={() => setShowQuickNote(false)}>
-                <Text style={styles.quickNoteCancelText}>❌ Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.enhancedQuickNoteSave} onPress={handleQuickNoteSubmit}>
-                <Text style={styles.enhancedQuickNoteSaveText}>💾 Save Note</Text>
-              </TouchableOpacity>
+          )}
+        </View>
+
+        {/* EDIT PUP MODAL */}
+        <Modal visible={editDogModal} animationType="slide" presentationStyle="pageSheet">
+          <SafeAreaView style={styles.enhancedModalContainer}>
+            <View style={styles.enhancedModalHeader}>
+              <TouchableOpacity onPress={() => setEditDogModal(false)}><Text>❌</Text></TouchableOpacity>
+              <Text style={styles.enhancedModalTitle}>🐕 Edit Pup Info</Text>
+              <TouchableOpacity onPress={saveDogInfo}><Text>💾 Save</Text></TouchableOpacity>
+            </View>
+            <ScrollView style={styles.enhancedModalContent}>
+              <View style={styles.enhancedModalSection}>
+                <Text style={styles.enhancedModalLabel}>🐕 Dog Name</Text>
+                <TextInput
+                  style={styles.enhancedModalInput}
+                  value={editDogName}
+                  onChangeText={setEditDogName}
+                  placeholder="Dog Name"
+                />
+              </View>
+              <View style={styles.enhancedModalSection}>
+                <Text style={styles.enhancedModalLabel}>🐕‍🦺 Breed</Text>
+                <RNPickerSelect
+                  onValueChange={setEditDogBreed}
+                  value={editDogBreed}
+                  placeholder={{ label: "🐕 Select Breed...", value: "" }}
+                  items={[
+                    ...commonUKBreeds.map((b) => ({ label: b, value: b })),
+                    { label: "🐕 Other", value: "Other" },
+                  ]}
+                  style={{ inputIOS: styles.enhancedModalPickerInput, inputAndroid: styles.enhancedModalPickerInput }}
+                />
+                {editDogBreed === "Other" && (
+                  <TextInput
+                    style={[styles.enhancedModalInput, styles.modalInputMarginTop]}
+                    value={editDogBreedOther}
+                    onChangeText={setEditDogBreedOther}
+                    placeholder="✏️ Specify breed"
+                  />
+                )}
+              </View>
+              <View style={styles.enhancedModalSection}>
+                <Text style={styles.enhancedModalLabel}>🎂 Date of Birth (YYYY-MM-DD)</Text>
+                <TextInput
+                  style={styles.enhancedModalInput}
+                  value={editDogDob}
+                  onChangeText={setEditDogDob}
+                  placeholder="YYYY-MM-DD"
+                  keyboardType={Platform.OS === "ios" ? "numbers-and-punctuation" : "default"}
+                  maxLength={10}
+                />
+              </View>
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
+
+        {/* QUICK NOTE MODAL */}
+        <Modal visible={showQuickNote} animationType="slide" transparent>
+          <View style={styles.quickNoteOverlay}>
+            <View style={styles.enhancedQuickNoteModal}>
+              <View style={styles.quickNoteHeader}>
+                <Text style={styles.enhancedQuickNoteTitle}>📝 Quick Training Note</Text>
+                <TouchableOpacity onPress={() => setShowQuickNote(false)}><Text>❌</Text></TouchableOpacity>
+              </View>
+              <TextInput
+                style={styles.enhancedQuickNoteInput}
+                placeholder="🐕 Add a quick training note..."
+                value={quickNoteText}
+                onChangeText={setQuickNoteText}
+                multiline
+                numberOfLines={4}
+                autoFocus
+              />
+              <View style={styles.quickNoteActions}>
+                <TouchableOpacity style={styles.enhancedQuickNoteCancel} onPress={() => setShowQuickNote(false)}>
+                  <Text style={styles.quickNoteCancelText}>❌ Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.enhancedQuickNoteSave} onPress={handleQuickNoteSubmit}>
+                  <Text style={styles.enhancedQuickNoteSaveText}>💾 Save Note</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
 
-      {/* CALENDAR NOTE MODAL */}
-      <Modal visible={showNoteModal} transparent animationType="fade">
-        <View style={styles.noteModalOverlay}>
-          <View style={styles.noteModalContainer}>
-            <Text style={styles.noteModalTitle}>📝 Add note for {currentNoteDate}</Text>
-            <TextInput
-              value={noteInputText}
-              onChangeText={setNoteInputText}
-              placeholder="🐕 Training note..."
-              style={styles.noteModalInput}
-              multiline
-            />
-            <View style={styles.noteModalActions}>
-              <TouchableOpacity
-                onPress={() => { setShowNoteModal(false); Keyboard.dismiss(); }}
-                style={styles.noteModalCancel}
-              >
-                <Text style={styles.noteModalCancelText}>❌ Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleSaveNote} style={styles.noteModalSave}>
-                <Text style={styles.noteModalSaveText}>💾 Save Note</Text>
-              </TouchableOpacity>
+        {/* CALENDAR NOTE MODAL */}
+        <Modal visible={showNoteModal} transparent animationType="fade">
+          <View style={styles.noteModalOverlay}>
+            <View style={styles.noteModalContainer}>
+              <Text style={styles.noteModalTitle}>📝 Add note for {currentNoteDate}</Text>
+              <TextInput
+                value={noteInputText}
+                onChangeText={setNoteInputText}
+                placeholder="🐕 Training note..."
+                style={styles.noteModalInput}
+                multiline
+              />
+              <View style={styles.noteModalActions}>
+                <TouchableOpacity
+                  onPress={() => { setShowNoteModal(false); Keyboard.dismiss(); }}
+                  style={styles.noteModalCancel}
+                >
+                  <Text style={styles.noteModalCancelText}>❌ Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleSaveNote} style={styles.noteModalSave}>
+                  <Text style={styles.noteModalSaveText}>💾 Save Note</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
-    </SafeAreaView>
+        </Modal>
+      </SafeAreaView>
+    </ErrorBoundary>
   );
 }
